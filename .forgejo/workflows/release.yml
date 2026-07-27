@@ -11,22 +11,27 @@ env:
 
 jobs:
   publish:
-    # ==========================================================================
-    #  WINDOWS RUNNER REQUIRED — THIS JOB DOES NOT RUN YET.
-    #  WPF cannot be published on Linux, so every release artifact has to come
-    #  from a runner registered with the label `windows`. Until one exists,
-    #  tagging still works and this job sits queued; cut the release by hand
-    #  with tools/publish-local.ps1, which is the same script this job calls.
-    #  That runner needs, on PATH: .NET 8 SDK, git, node (actions/checkout is a
-    #  JavaScript action), PowerShell 7 (pwsh), and curl.
-    # ==========================================================================
+    # WPF release artifacts are produced on the dedicated Windows host runner.
     runs-on: windows
+    timeout-minutes: 30
     defaults:
       run:
         shell: pwsh
 
     steps:
       - uses: https://data.forgejo.org/actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: https://data.forgejo.org/actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Verify the tagged source
+        run: |
+          dotnet restore CspAppMultiplexer.sln
+          ./tools/suite-sync.ps1 -Mode Check
+          dotnet format CspAppMultiplexer.sln --verify-no-changes --no-restore
+          dotnet test CspAppMultiplexer.sln -c Release --no-restore
 
       # The tag drives the assembly version: v1.2.3 -> -p:Version=1.2.3.
       # publish-local.ps1 writes dist/release/ — two .exe files, THIRD-PARTY-NOTICES.md,
@@ -58,7 +63,7 @@ jobs:
           $payload = [ordered]@{
             tag_name         = $tag
             target_commitish = $env:GITHUB_SHA
-            name             = $tag
+            name             = "CSP Mux $($tag -replace '^v', '')"
             body             = (Get-Content "$out/release-body.md" -Raw)
             draft            = $false
             prerelease       = $tag -match '-'

@@ -62,4 +62,18 @@ public sealed class ProtocolCodecTests
         Assert.Equal(detail, frame!.RawDetail);
         Assert.Equal(tail, frame.BinaryTail);
     }
+
+    [Fact]
+    public void FrameCodec_RejectsBinaryPayloadThatIsNotPaddedBase64()
+    {
+        var exception = Assert.Throws<ArgumentException>(() =>
+            CompanionFrameCodec.EncodeRaw(
+                CompanionFrameType.Success,
+                "PreviewWebtoonFromClient",
+                1,
+                "{}"u8,
+                [0x01, 0x00, 0x02]));
+
+        Assert.Equal("binaryTail", exception.ParamName);
+    }
 }

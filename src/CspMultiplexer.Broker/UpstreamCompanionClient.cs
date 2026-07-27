@@ -17,6 +17,7 @@ public sealed class UpstreamCompanionClient : ICompanionUpstream
     private Task? heartbeatTask;
     private int nextSerial = -1;
     private int disposed;
+    private int disconnected;
     private bool isAuthenticated;
 
     private UpstreamCompanionClient(TcpClient tcpClient)
@@ -27,6 +28,8 @@ public sealed class UpstreamCompanionClient : ICompanionUpstream
     }
 
     public event EventHandler<CompanionServerPushEventArgs>? ServerPushReceived;
+
+    public event EventHandler<CompanionDisconnectedEventArgs>? Disconnected;
 
     public bool IsAuthenticated => Volatile.Read(ref isAuthenticated);
 
@@ -44,10 +47,11 @@ public sealed class UpstreamCompanionClient : ICompanionUpstream
         foreach (var address in pairing.Addresses)
         {
             var tcpClient = new TcpClient(address.AddressFamily);
+            UpstreamCompanionClient? client = null;
             try
             {
                 await tcpClient.ConnectAsync(address, pairing.Port, cancellationToken).ConfigureAwait(false);
-                var client = new UpstreamCompanionClient(tcpClient);
+                client = new UpstreamCompanionClient(tcpClient);
                 client.StartReceiveLoop();
                 await client.AuthenticateAsync(pairing, cancellationToken).ConfigureAwait(false);
                 return client;
@@ -55,11 +59,11 @@ public sealed class UpstreamCompanionClient : ICompanionUpstream
             catch (Exception ex) when (ex is SocketException or IOException)
             {
                 lastError = ex;
-                tcpClient.Dispose();
+                await DisposeFailedConnectionAsync(client, tcpClient).ConfigureAwait(false);
             }
             catch
             {
-                tcpClient.Dispose();
+                await DisposeFailedConnectionAsync(client, tcpClient).ConfigureAwait(false);
                 throw;
             }
         }
@@ -220,7 +224,8 @@ public sealed class UpstreamCompanionClient : ICompanionUpstream
         }
         catch (Exception ex) when (
             ex is IOException or EndOfStreamException or SocketException or
-                TimeoutException or TaskCanceledException or OperationCanceledException)
+                InvalidOperationException or TimeoutException or
+                TaskCanceledException or OperationCanceledException)
         {
             if (!cancellationToken.IsCancellationRequested)
             {
@@ -247,10 +252,21 @@ public sealed class UpstreamCompanionClient : ICompanionUpstream
 
     private void MarkDisconnected(Exception exception)
     {
+        if (Interlocked.Exchange(ref disconnected, 1) != 0)
+        {
+            return;
+        }
+
         Volatile.Write(ref isAuthenticated, false);
+        lifetimeCancellation.Cancel();
         foreach (var completion in pending.Values)
         {
             completion.TrySetException(exception);
+        }
+
+        if (Volatile.Read(ref disposed) == 0)
+        {
+            Disconnected?.Invoke(this, new CompanionDisconnectedEventArgs(exception));
         }
     }
 
@@ -269,7 +285,29 @@ public sealed class UpstreamCompanionClient : ICompanionUpstream
             await task.ConfigureAwait(false);
         }
         catch (Exception ex) when (
-            ex is OperationCanceledException or IOException or ObjectDisposedException)
+            ex is OperationCanceledException or IOException or InvalidOperationException or
+                ObjectDisposedException or SocketException)
+        {
+        }
+    }
+
+    private static async Task DisposeFailedConnectionAsync(
+        UpstreamCompanionClient? client,
+        TcpClient tcpClient)
+    {
+        if (client is null)
+        {
+            tcpClient.Dispose();
+            return;
+        }
+
+        try
+        {
+            await client.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex) when (
+            ex is OperationCanceledException or IOException or InvalidOperationException or
+                ObjectDisposedException or SocketException)
         {
         }
     }

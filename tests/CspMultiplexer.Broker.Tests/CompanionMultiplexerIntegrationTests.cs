@@ -10,6 +10,63 @@ namespace CspMultiplexer.Broker.Tests;
 public sealed class CompanionMultiplexerIntegrationTests
 {
     [Fact]
+    public async Task UpstreamDisconnect_IsSignaledAndDisposesCleanly()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var closeConnection = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var serverTask = Task.Run(async () =>
+        {
+            using var serverClient = await listener.AcceptTcpClientAsync(timeout.Token);
+            var stream = serverClient.GetStream();
+            var authentication = await CompanionFrameCodec.ReadAsync(
+                stream,
+                cancellationToken: timeout.Token);
+            var response = CompanionFrameCodec.EncodeRaw(
+                CompanionFrameType.Success,
+                "Authenticate",
+                authentication.Serial,
+                CompanionAuthCodec.CreateResultDetail(
+                    "Unknown",
+                    "G#1:2026.07",
+                    isQuickAccessAvailable: true));
+            await stream.WriteAsync(response, timeout.Token);
+            await stream.FlushAsync(timeout.Token);
+            await closeConnection.Task.WaitAsync(timeout.Token);
+        }, timeout.Token);
+
+        try
+        {
+            var pairing = new CompanionPairingInfo(
+                [IPAddress.Loopback],
+                checked((ushort)endpoint.Port),
+                "invitation",
+                "G#1:2026.07");
+            await using var upstream = await UpstreamCompanionClient.ConnectAndAuthenticateAsync(
+                pairing,
+                timeout.Token);
+            var disconnected = new TaskCompletionSource<Exception>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            upstream.Disconnected += (_, eventArgs) =>
+                disconnected.TrySetResult(eventArgs.Exception);
+
+            closeConnection.TrySetResult();
+            var exception = await disconnected.Task.WaitAsync(timeout.Token);
+
+            Assert.IsAssignableFrom<IOException>(exception);
+            Assert.False(upstream.IsAuthenticated);
+            await serverTask;
+        }
+        finally
+        {
+            closeConnection.TrySetResult();
+            listener.Stop();
+        }
+    }
+
+    [Fact]
     public async Task TwoQrClients_WithCollidingSerials_GetOnlyTheirOwnResponses()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -72,6 +129,36 @@ public sealed class CompanionMultiplexerIntegrationTests
     }
 
     [Fact]
+    public async Task HostPushes_ArriveInOrderForEachDownstream()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await using var upstream = new FakeUpstream();
+        await using var multiplexer = new CompanionMultiplexer(
+            upstream,
+            "G#1:2026.07",
+            new CompanionMultiplexerOptions { MaximumPendingPushesPerClient = 32 });
+        await multiplexer.StartAsync(timeout.Token);
+        var invitation = CompanionPairingCodec.Decode(multiplexer.PairingUrl!);
+        await using var client = await FakeDownstreamClient.ConnectAsync(
+            invitation,
+            "ordered-pushes",
+            timeout.Token);
+
+        for (var sequence = 0; sequence < 20; sequence++)
+        {
+            upstream.Push(
+                "SyncColorCircleUIState",
+                JsonSerializer.SerializeToUtf8Bytes(new { Sequence = sequence }));
+        }
+
+        for (var expected = 0; expected < 20; expected++)
+        {
+            var push = await client.ReadAsync(timeout.Token);
+            Assert.Equal(expected, push.Detail?.GetProperty("Sequence").GetInt32());
+        }
+    }
+
+    [Fact]
     public async Task ClientCanReconnectUsingMarkerAndOriginalRotatedPassword()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -94,6 +181,49 @@ public sealed class CompanionMultiplexerIntegrationTests
         var response = await reconnected.SendAsync(4, 9, timeout.Token);
 
         Assert.Equal(9, response.Detail?.GetProperty("Echo").GetInt32());
+    }
+
+    [Fact]
+    public async Task ReconnectCredentials_AreCappedAndOldestInactiveCredentialIsEvicted()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await using var upstream = new FakeUpstream();
+        await using var multiplexer = new CompanionMultiplexer(
+            upstream,
+            "G#1:2026.07",
+            new CompanionMultiplexerOptions { MaximumClients = 2 });
+        await multiplexer.StartAsync(timeout.Token);
+        var invitation = CompanionPairingCodec.Decode(multiplexer.PairingUrl!);
+
+        var first = await FakeDownstreamClient.ConnectAsync(
+            invitation,
+            "oldest-credential",
+            timeout.Token);
+        await first.DisposeAsync();
+        await WaitForClientCountAsync(multiplexer, 0, timeout.Token);
+
+        var second = await FakeDownstreamClient.ConnectAsync(
+            invitation,
+            "newer-credential",
+            timeout.Token);
+        await second.DisposeAsync();
+        await WaitForClientCountAsync(multiplexer, 0, timeout.Token);
+
+        await using var third = await FakeDownstreamClient.ConnectAsync(
+            invitation,
+            "newest-credential",
+            timeout.Token);
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            FakeDownstreamClient.ReconnectAsync(
+                invitation,
+                "oldest-credential",
+                timeout.Token));
+
+        await using var reconnected = await FakeDownstreamClient.ReconnectAsync(
+            invitation,
+            "newer-credential",
+            timeout.Token);
     }
 
     [Fact]
@@ -163,6 +293,29 @@ public sealed class CompanionMultiplexerIntegrationTests
             });
     }
 
+    [Fact]
+    public async Task PendingPushLimit_MustBeWithinSupportedRange()
+    {
+        await using var upstream = new FakeUpstream();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new CompanionMultiplexer(
+                upstream,
+                "G#1:2026.07",
+                new CompanionMultiplexerOptions { MaximumPendingPushesPerClient = 0 }));
+    }
+
+    private static async Task WaitForClientCountAsync(
+        CompanionMultiplexer multiplexer,
+        int expected,
+        CancellationToken cancellationToken)
+    {
+        while (multiplexer.AuthenticatedClientCount != expected)
+        {
+            await Task.Delay(10, cancellationToken);
+        }
+    }
+
     private sealed class FakeUpstream : ICompanionUpstream
     {
         private int responseSerial;
@@ -170,6 +323,8 @@ public sealed class CompanionMultiplexerIntegrationTests
         private int maximumConcurrentRequests;
 
         public event EventHandler<CompanionServerPushEventArgs>? ServerPushReceived;
+
+        public event EventHandler<CompanionDisconnectedEventArgs>? Disconnected;
 
         public bool IsAuthenticated => true;
 
@@ -222,6 +377,9 @@ public sealed class CompanionMultiplexerIntegrationTests
                 []);
             ServerPushReceived?.Invoke(this, new CompanionServerPushEventArgs(frame));
         }
+
+        public void Disconnect(Exception exception) =>
+            Disconnected?.Invoke(this, new CompanionDisconnectedEventArgs(exception));
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 

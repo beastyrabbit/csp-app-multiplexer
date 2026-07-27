@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading.Channels;
 using CspMultiplexer.Protocol;
 
 namespace CspMultiplexer.Broker;
@@ -16,11 +17,12 @@ public sealed class CompanionMultiplexer : IAsyncDisposable
     private readonly CompanionMultiplexerOptions options;
     private readonly CancellationTokenSource lifetimeCancellation = new();
     private readonly ConcurrentDictionary<Guid, DownstreamSession> sessions = new();
-    private readonly Dictionary<string, Guid> reconnectCredentials = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ReconnectCredential> reconnectCredentials = new(StringComparer.Ordinal);
     private readonly object credentialLock = new();
     private readonly CompanionCommandScheduler commandScheduler;
     private TcpListener? listener;
     private Task? acceptTask;
+    private long credentialUseSequence;
     private int disposed;
 
     public CompanionMultiplexer(
@@ -44,6 +46,13 @@ public sealed class CompanionMultiplexer : IAsyncDisposable
         if (this.options.MaximumClients is < 1 or > 64)
         {
             throw new ArgumentOutOfRangeException(nameof(options), "Maximum clients must be between 1 and 64.");
+        }
+
+        if (this.options.MaximumPendingPushesPerClient is < 1 or > 1024)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(options),
+                "Maximum pending pushes per client must be between 1 and 1024.");
         }
 
         InvitationPassword = CompanionAuthCodec.CreateRandomPassword();
@@ -145,6 +154,7 @@ public sealed class CompanionMultiplexer : IAsyncDisposable
                 commandScheduler,
                 Authenticate,
                 options.MaximumFrameLength,
+                options.MaximumPendingPushesPerClient,
                 OnSessionAuthenticated,
                 OnSessionClosed);
             if (!sessions.TryAdd(connectionId, session))
@@ -176,7 +186,34 @@ public sealed class CompanionMultiplexer : IAsyncDisposable
                     return DownstreamAuthenticationDecision.Reject("PasswordMismatch");
                 }
 
-                reconnectCredentials.Add(request.NewPassword, connectionId);
+                if (reconnectCredentials.Count >= options.MaximumClients)
+                {
+                    string? oldestInactivePassword = null;
+                    var oldestUse = long.MaxValue;
+                    foreach (var (password, storedCredential) in reconnectCredentials)
+                    {
+                        if (!sessions.ContainsKey(storedCredential.ActiveConnectionId) &&
+                            storedCredential.LastUsed < oldestUse)
+                        {
+                            oldestInactivePassword = password;
+                            oldestUse = storedCredential.LastUsed;
+                        }
+                    }
+
+                    if (oldestInactivePassword is null)
+                    {
+                        return DownstreamAuthenticationDecision.Reject("ServerUnready");
+                    }
+
+                    reconnectCredentials.Remove(oldestInactivePassword);
+                }
+
+                reconnectCredentials.Add(
+                    request.NewPassword,
+                    new ReconnectCredential(
+                        connectionId,
+                        connectionId,
+                        ++credentialUseSequence));
                 return DownstreamAuthenticationDecision.Accept(connectionId);
             }
 
@@ -184,9 +221,17 @@ public sealed class CompanionMultiplexer : IAsyncDisposable
                     request.CurrentPassword,
                     CompanionAuthCodec.ReconnectionMarker,
                     StringComparison.Ordinal) &&
-                reconnectCredentials.TryGetValue(request.NewPassword, out var clientId))
+                reconnectCredentials.TryGetValue(request.NewPassword, out var credential))
             {
-                return DownstreamAuthenticationDecision.Accept(clientId);
+                if (sessions.TryGetValue(credential.ActiveConnectionId, out var previousSession) &&
+                    previousSession.ConnectionId != connectionId)
+                {
+                    previousSession.Disconnect();
+                }
+
+                credential.ActiveConnectionId = connectionId;
+                credential.LastUsed = ++credentialUseSequence;
+                return DownstreamAuthenticationDecision.Accept(credential.ClientId);
             }
         }
 
@@ -212,8 +257,20 @@ public sealed class CompanionMultiplexer : IAsyncDisposable
     {
         foreach (var session in sessions.Values.Where(value => value.IsAuthenticated))
         {
-            _ = session.SendServerPushAsync(eventArgs.Frame, lifetimeCancellation.Token);
+            session.QueueServerPush(eventArgs.Frame);
         }
+    }
+
+    private sealed class ReconnectCredential(
+        Guid clientId,
+        Guid activeConnectionId,
+        long lastUsed)
+    {
+        public Guid ClientId { get; } = clientId;
+
+        public Guid ActiveConnectionId { get; set; } = activeConnectionId;
+
+        public long LastUsed { get; set; } = lastUsed;
     }
 
     private sealed record DownstreamAuthenticationDecision(
@@ -240,10 +297,12 @@ public sealed class CompanionMultiplexer : IAsyncDisposable
         private readonly Action<DownstreamSession> closed;
         private readonly CancellationTokenSource lifetimeCancellation = new();
         private readonly SemaphoreSlim writeLock = new(1, 1);
+        private readonly Channel<CompanionFrame> serverPushes;
         private Task? runTask;
         private int nextPushSerial = -1;
         private int disposed;
         private int closeNotified;
+        private int resourcesDisposed;
         private bool isAuthenticated;
 
         public DownstreamSession(
@@ -253,6 +312,7 @@ public sealed class CompanionMultiplexer : IAsyncDisposable
             CompanionCommandScheduler commandScheduler,
             Func<Guid, CompanionAuthRequest, DownstreamAuthenticationDecision> authenticate,
             int maximumFrameLength,
+            int maximumPendingPushes,
             Action<DownstreamSession> authenticated,
             Action<DownstreamSession> closed)
         {
@@ -263,6 +323,14 @@ public sealed class CompanionMultiplexer : IAsyncDisposable
             this.commandScheduler = commandScheduler;
             this.authenticate = authenticate;
             this.maximumFrameLength = maximumFrameLength;
+            serverPushes = Channel.CreateBounded<CompanionFrame>(
+                new BoundedChannelOptions(maximumPendingPushes)
+                {
+                    SingleReader = true,
+                    SingleWriter = true,
+                    FullMode = BoundedChannelFullMode.Wait,
+                    AllowSynchronousContinuations = false,
+                });
             this.authenticated = authenticated;
             this.closed = closed;
         }
@@ -275,41 +343,30 @@ public sealed class CompanionMultiplexer : IAsyncDisposable
 
         public void Start(CancellationToken serverCancellation)
         {
-            var linked = CancellationTokenSource.CreateLinkedTokenSource(
-                lifetimeCancellation.Token,
-                serverCancellation);
-            runTask = Task.Run(async () =>
-            {
-                using (linked)
-                {
-                    await RunAsync(linked.Token).ConfigureAwait(false);
-                }
-            });
+            runTask = RunSessionAsync(serverCancellation);
         }
 
-        public async Task SendServerPushAsync(
-            CompanionFrame frame,
-            CancellationToken cancellationToken)
+        public void QueueServerPush(CompanionFrame frame)
         {
             if (!IsAuthenticated || Volatile.Read(ref disposed) != 0)
             {
                 return;
             }
 
-            var serial = unchecked((uint)Interlocked.Increment(ref nextPushSerial));
-            var encoded = CompanionFrameCodec.EncodeRaw(
-                CompanionFrameType.Command,
-                frame.Command,
-                serial,
-                frame.RawDetail,
-                frame.BinaryTail);
-            try
+            if (!serverPushes.Writer.TryWrite(frame))
             {
-                await WriteAsync(encoded, cancellationToken).ConfigureAwait(false);
+                // A client that cannot consume a small bounded queue would otherwise retain
+                // one task and one frame per host push for the rest of the session.
+                Disconnect();
             }
-            catch (Exception ex) when (
-                ex is IOException or ObjectDisposedException or OperationCanceledException)
+        }
+
+        public void Disconnect()
+        {
+            if (Volatile.Read(ref disposed) == 0)
             {
+                lifetimeCancellation.Cancel();
+                tcpClient.Dispose();
             }
         }
 
@@ -321,6 +378,7 @@ public sealed class CompanionMultiplexer : IAsyncDisposable
             }
 
             Volatile.Write(ref isAuthenticated, false);
+            serverPushes.Writer.TryComplete();
             await lifetimeCancellation.CancelAsync().ConfigureAwait(false);
             tcpClient.Dispose();
             await stream.DisposeAsync().ConfigureAwait(false);
@@ -336,9 +394,64 @@ public sealed class CompanionMultiplexer : IAsyncDisposable
                 }
             }
 
-            writeLock.Dispose();
-            lifetimeCancellation.Dispose();
+            DisposeResourcesOnce();
             NotifyClosedOnce();
+        }
+
+        private async Task RunSessionAsync(CancellationToken serverCancellation)
+        {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+                lifetimeCancellation.Token,
+                serverCancellation);
+            var pushTask = SendServerPushesAsync(linked.Token);
+            try
+            {
+                await RunAsync(linked.Token).ConfigureAwait(false);
+            }
+            finally
+            {
+                serverPushes.Writer.TryComplete();
+                await linked.CancelAsync().ConfigureAwait(false);
+                try
+                {
+                    await pushTask.ConfigureAwait(false);
+                }
+                catch (Exception ex) when (
+                    ex is IOException or OperationCanceledException or ObjectDisposedException)
+                {
+                }
+
+                Interlocked.Exchange(ref disposed, 1);
+                DisposeResourcesOnce();
+            }
+        }
+
+        private async Task SendServerPushesAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                await foreach (var frame in serverPushes.Reader.ReadAllAsync(cancellationToken)
+                                   .ConfigureAwait(false))
+                {
+                    var serial = unchecked((uint)Interlocked.Increment(ref nextPushSerial));
+                    var encoded = CompanionFrameCodec.EncodeRaw(
+                        CompanionFrameType.Command,
+                        frame.Command,
+                        serial,
+                        frame.RawDetail,
+                        frame.BinaryTail);
+                    await WriteAsync(encoded, cancellationToken).ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex) when (
+                ex is ArgumentException or IOException or
+                    OperationCanceledException or ObjectDisposedException)
+            {
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    Disconnect();
+                }
+            }
         }
 
         private async Task RunAsync(CancellationToken cancellationToken)
@@ -515,6 +628,17 @@ public sealed class CompanionMultiplexer : IAsyncDisposable
             {
                 closed(this);
             }
+        }
+
+        private void DisposeResourcesOnce()
+        {
+            if (Interlocked.Exchange(ref resourcesDisposed, 1) != 0)
+            {
+                return;
+            }
+
+            writeLock.Dispose();
+            lifetimeCancellation.Dispose();
         }
     }
 }

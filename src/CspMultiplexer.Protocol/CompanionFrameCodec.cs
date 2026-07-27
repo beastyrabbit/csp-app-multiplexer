@@ -46,6 +46,13 @@ public static class CompanionFrameCodec
         }
 
         ValidateDetail(rawDetail);
+        if (!binaryTail.IsEmpty && !IsBase64(binaryTail))
+        {
+            throw new ArgumentException(
+                "Binary payloads must be standard padded Base64 text.",
+                nameof(binaryTail));
+        }
+
         var writer = new ArrayBufferWriter<byte>(96 + rawDetail.Length + binaryTail.Length);
         Write(writer, [(byte)type]);
         Write(writer, Prefix);
@@ -152,6 +159,11 @@ public static class CompanionFrameCodec
         var binarySeparator = detailAndTail.IndexOf((byte)0x0B);
         var rawDetail = (binarySeparator < 0 ? detailAndTail : detailAndTail[..binarySeparator]).ToArray();
         var tail = binarySeparator < 0 ? [] : detailAndTail[(binarySeparator + 1)..].ToArray();
+        if (tail.Length > 0 && !IsBase64(tail))
+        {
+            throw new InvalidDataException("Frame binary payload is not standard padded Base64 text.");
+        }
+
         JsonElement? detail = null;
         if (rawDetail.Length > 0)
         {
@@ -207,6 +219,42 @@ public static class CompanionFrameCodec
         {
             throw new InvalidDataException($"Unknown companion frame type 0x{(byte)type:X2}.");
         }
+    }
+
+    private static bool IsBase64(ReadOnlySpan<byte> value)
+    {
+        if (value.IsEmpty || value.Length % 4 != 0)
+        {
+            return false;
+        }
+
+        var paddingStarted = false;
+        var paddingLength = 0;
+        foreach (var character in value)
+        {
+            if (character == (byte)'=')
+            {
+                paddingStarted = true;
+                paddingLength++;
+                if (paddingLength > 2)
+                {
+                    return false;
+                }
+
+                continue;
+            }
+
+            if (paddingStarted ||
+                !(character is >= (byte)'A' and <= (byte)'Z' or
+                    >= (byte)'a' and <= (byte)'z' or
+                    >= (byte)'0' and <= (byte)'9' or
+                    (byte)'+' or (byte)'/'))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static void ValidateMaximumLength(int maximumFrameLength)

@@ -7,9 +7,16 @@ public sealed class CompanionServerPushEventArgs(CompanionFrame frame) : EventAr
     public CompanionFrame Frame { get; } = frame;
 }
 
+public sealed class CompanionDisconnectedEventArgs(Exception exception) : EventArgs
+{
+    public Exception Exception { get; } = exception;
+}
+
 public interface ICompanionUpstream : IAsyncDisposable
 {
     event EventHandler<CompanionServerPushEventArgs>? ServerPushReceived;
+
+    event EventHandler<CompanionDisconnectedEventArgs>? Disconnected;
 
     bool IsAuthenticated { get; }
 

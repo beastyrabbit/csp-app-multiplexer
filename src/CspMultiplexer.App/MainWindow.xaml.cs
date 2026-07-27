@@ -44,6 +44,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private const string FailureStatusText = "Connection failed";
 
     private readonly TrayHost tray;
+    private readonly SemaphoreSlim stopGate = new(1, 1);
 
     private AppPreferences preferences;
     private IPAddress selectedAddress;
@@ -55,9 +56,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private string readyActivityDetail = string.Empty;
     private string failureDetail = string.Empty;
     private string failureInstruction = string.Empty;
+    private Exception? upstreamDisconnect;
     private int clientCount;
     private bool isBusy;
     private bool loadingSettings;
+    private bool stopping;
     private bool closingAfterCleanup;
     private bool closeInProgress;
     private bool exitRequested;
@@ -463,14 +466,22 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         try
         {
+            upstreamDisconnect = null;
             var scanner = new CompanionQrScanner(uri =>
                 CompanionPairingCodec.TryDecode(uri.AbsoluteUri, out _));
-            var uri = await scanner.ScanUntilFoundAsync(token).ConfigureAwait(true);
+            // Keep full-display capture bounded. A missing QR should return control to the
+            // user instead of consuming a full-resolution screenshot every retry forever.
+            var uri = await scanner.ScanAsync(token).ConfigureAwait(true);
             ApplyState(ConnectionState.Connecting);
 
             var pairing = CompanionPairingCodec.Decode(uri.AbsoluteUri);
             upstream = await UpstreamCompanionClient.ConnectAndAuthenticateAsync(pairing, token)
                 .ConfigureAwait(true);
+            upstream.Disconnected += UpstreamOnDisconnected;
+            if (!upstream.IsAuthenticated)
+            {
+                throw new IOException("The CSP connection closed immediately after authentication.");
+            }
 
             multiplexer = new CompanionMultiplexer(
                 upstream,
@@ -502,6 +513,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             readyActivityDetail = IPAddress.IsLoopback(selectedAddress)
                 ? "This computer only."
                 : $"{selectedAddress} · same Wi-Fi";
+            if (upstreamDisconnect is not null || !upstream.IsAuthenticated)
+            {
+                throw new IOException("The CSP connection was lost while sharing started.", upstreamDisconnect);
+            }
+
             ApplyState(ConnectionState.Online);
         }
         catch (OperationCanceledException)
@@ -537,31 +553,46 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async Task StopAsync()
     {
-        // FIRST. Deleting ahead of the teardown makes the file's absence the conservative
-        // error: a Companion that misses the window falls back to manual connect, where
-        // the reverse order would leave a file naming a dead port for the whole teardown.
-        MuxSessionHandoff.TryDeleteOwn();
-        operationCancellation?.Cancel();
-
-        if (multiplexer is not null)
+        await stopGate.WaitAsync().ConfigureAwait(true);
+        stopping = true;
+        try
         {
-            // Disposing sessions raises ClientCountChanged; unsubscribing first is what
-            // prevents a marshal onto a shutting-down dispatcher. Do not reorder.
-            multiplexer.ClientCountChanged -= MultiplexerOnClientCountChanged;
-            await multiplexer.DisposeAsync().ConfigureAwait(true);
-            multiplexer = null;
-        }
+            // FIRST. Deleting ahead of the teardown makes the file's absence the conservative
+            // error: a Companion that misses the window falls back to manual connect, where
+            // the reverse order would leave a file naming a dead port for the whole teardown.
+            MuxSessionHandoff.TryDeleteOwn();
+            operationCancellation?.Cancel();
+            if (upstream is not null)
+            {
+                upstream.Disconnected -= UpstreamOnDisconnected;
+            }
 
-        if (upstream is not null)
+            if (multiplexer is not null)
+            {
+                // Disposing sessions raises ClientCountChanged; unsubscribing first is what
+                // prevents a marshal onto a shutting-down dispatcher. Do not reorder.
+                multiplexer.ClientCountChanged -= MultiplexerOnClientCountChanged;
+                await multiplexer.DisposeAsync().ConfigureAwait(true);
+                multiplexer = null;
+            }
+
+            if (upstream is not null)
+            {
+                await upstream.DisposeAsync().ConfigureAwait(true);
+                upstream = null;
+            }
+
+            operationCancellation?.Dispose();
+            operationCancellation = null;
+            upstreamDisconnect = null;
+            readyActivityDetail = string.Empty;
+            ApplyState(ConnectionState.Idle);
+        }
+        finally
         {
-            await upstream.DisposeAsync().ConfigureAwait(true);
-            upstream = null;
+            stopping = false;
+            stopGate.Release();
         }
-
-        operationCancellation?.Dispose();
-        operationCancellation = null;
-        readyActivityDetail = string.Empty;
-        ApplyState(ConnectionState.Idle);
     }
 
     private async Task FailAsync(string detail, string instruction)
@@ -590,6 +621,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             case SocketException:
                 detail = $"Could not open a port on {selectedAddress}.";
                 instruction = "Choose a different network in Settings.";
+                return true;
+
+            case TimeoutException:
+                detail = "No CSP QR was found within 12 seconds.";
+                instruction = "Make CSP's QR fully visible, then scan again.";
                 return true;
 
             case InvalidOperationException when exception.Message.StartsWith(
@@ -648,6 +684,41 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             ApplyState(ConnectionState.QrHidden);
         }
+    }
+
+    private async void UpstreamOnDisconnected(
+        object? sender,
+        CompanionDisconnectedEventArgs e)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            if (!Dispatcher.HasShutdownStarted && !Dispatcher.HasShutdownFinished)
+            {
+                _ = Dispatcher.BeginInvoke(
+                    DispatcherPriority.Send,
+                    () => UpstreamOnDisconnected(sender, e));
+            }
+
+            return;
+        }
+
+        if (!ReferenceEquals(sender, upstream))
+        {
+            return;
+        }
+
+        upstreamDisconnect ??= e.Exception;
+        if (state is not (ConnectionState.Online or ConnectionState.QrHidden) ||
+            closeInProgress ||
+            stopping)
+        {
+            return;
+        }
+
+        await FailAsync(
+                "The connection to CSP was lost.",
+                "Reopen Connect to smartphone in CSP, then scan again.")
+            .ConfigureAwait(true);
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)

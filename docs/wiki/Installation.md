@@ -6,8 +6,8 @@ Windows 10 or newer, x64. No installer: one `.exe`, put it anywhere.
 
 | Build | Size | Needs |
 | --- | --- | --- |
-| `CSP-Mux-win-x64.exe` | 2.3 MiB | .NET 8 Desktop Runtime |
-| `CSP-Mux-win-x64-self-contained.exe` | 68.7 MiB | nothing |
+| `CSP-Mux-<version>-win-x64-needs-dotnet8.exe` | 2.3 MiB | .NET 8 Desktop Runtime |
+| `CSP-Mux-<version>-win-x64-standalone.exe` | 68.7 MiB | nothing |
 
 Take the small one unless you refuse to install a runtime; it trips antivirus
 less often. Neither is trimmed or AOT-compiled — Windows Forms (tray icon, QR
@@ -22,7 +22,7 @@ the ASP.NET Core runtime works.
 Compare the SHA256 with the release page:
 
 ```powershell
-Get-FileHash .\CSP-Mux-win-x64.exe -Algorithm SHA256
+Get-FileHash ".\CSP-Mux-<version>-win-x64-standalone.exe" -Algorithm SHA256
 ```
 
 A single-file .NET app unpacks itself into a temp directory on first launch —

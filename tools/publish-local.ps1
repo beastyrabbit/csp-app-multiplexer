@@ -32,7 +32,10 @@ param(
     # Where the finished files land. Cleared first.
     [string] $OutputDirectory,
 
-    # Used to build the antivirus link in release-body.md.
+    # Markdown placed above the download table. Defaults to docs/releases/<tag>.md.
+    [string] $ReleaseNotesPath,
+
+    # Used to build repository links in release-body.md.
     [string] $RepoUrl = 'https://git.heerlab.com/beasty/csp-app-multiplexer'
 )
 
@@ -62,6 +65,9 @@ if (-not $Version) { $Version = '0.0.0-dev' }
 if (-not $Tag) { $Tag = "v$Version" }
 
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $repoRoot 'dist/release' }
+if (-not $ReleaseNotesPath) {
+    $ReleaseNotesPath = Join-Path $repoRoot "docs/releases/$Tag.md"
+}
 $out     = [IO.Path]::GetFullPath($OutputDirectory)
 $staging = Join-Path $out '.staging'
 
@@ -139,9 +145,19 @@ Write-Text (Join-Path $out 'SHA256SUMS.txt') (($lines -join "`n") + "`n")
 # ---- release body ----------------------------------------------------------------------
 $small = $assets[0]
 $big   = $assets[1]
-$avUrl = "$RepoUrl/src/tag/$Tag/README.md#antivirus"
+$avUrl = "$RepoUrl/wiki/Installation#verify-the-download-and-antivirus"
+$releaseNotes = if (Test-Path $ReleaseNotesPath) {
+    (Get-Content $ReleaseNotesPath -Raw).Trim()
+}
+else {
+    "CSP Mux $Version for Windows."
+}
 
 $body = @"
+$releaseNotes
+
+## Downloads
+
 Windows 10 or 11, 64-bit.
 
 | Download | Size | You need |

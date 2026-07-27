@@ -58,11 +58,13 @@ Companion repository. A `SuiteSyncCheck` build target fails on drift; `tools\sui
 | Job | Runner | Covers |
 | --- | --- | --- |
 | `libraries` | Linux | `Protocol`, `Broker` and their tests, by explicit project list |
-| `windows` | Windows | the WPF app, all tests, every release artifact |
+| `windows` | Windows | suite sync, formatting, the full WPF solution and all tests |
 
 The Linux job never touches the `.sln` — that would pull in the WPF app and fail. It also
 checks out with `git` rather than an action, because the .NET SDK container ships no Node.js
 and every checkout action is a node20 JavaScript action.
 
-`release.yml` runs on a `v*` tag and calls `publish-local.ps1`, then creates the release
-through the Forgejo API with `curl`. Auth header is `token`, not `Bearer`.
+The Windows jobs install the current .NET 8 SDK with `setup-dotnet`; the runner itself
+provides Git, Node.js and PowerShell 7. `release.yml` runs on a `v*` tag, verifies the
+tagged source, calls `publish-local.ps1`, then creates the release through the Forgejo API
+with `curl`. Auth header is `token`, not `Bearer`.
