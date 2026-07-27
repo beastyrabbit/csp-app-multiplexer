@@ -8,6 +8,8 @@ on:
 env:
   DOTNET_NOLOGO: "true"
   DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  # The host currently provides a newer runtime; allow net8.0 test hosts to use it.
+  DOTNET_ROLL_FORWARD: "Major"
 
 jobs:
   publish:
@@ -20,9 +22,6 @@ jobs:
 
     steps:
       - uses: https://data.forgejo.org/actions/checkout@v4
-
-      - name: Show .NET environment
-        run: dotnet --info
 
       - name: Verify the tagged source
         run: |
