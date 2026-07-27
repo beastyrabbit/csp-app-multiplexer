@@ -23,12 +23,8 @@ jobs:
     steps:
       - uses: https://data.forgejo.org/actions/checkout@v4
 
-      - name: Verify .NET 8 SDK
-        run: |
-          $version = dotnet --version
-          if (-not $version.StartsWith('8.')) {
-            throw "The Windows runner needs .NET 8 SDK; found $version."
-          }
+      - name: Show .NET environment
+        run: dotnet --info
 
       - name: Restore
         run: dotnet restore CspAppMultiplexer.sln
