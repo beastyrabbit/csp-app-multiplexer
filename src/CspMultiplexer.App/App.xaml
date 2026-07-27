@@ -1,0 +1,17 @@
+﻿<Application x:Class="CspMultiplexer.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnMainWindowClose"
+             DispatcherUnhandledException="OnDispatcherUnhandledException"
+             SessionEnding="OnSessionEnding">
+  <!-- No StartupUri: Shutdown() only posts to the dispatcher, so a second instance that
+       shuts down in OnStartup would still get a StartupUri window — and a second tray
+       icon — before the shutdown ran. OnStartup creates the window itself instead. -->
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="pack://application:,,,/Theme/Theme.xaml"/>
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
+</Application>

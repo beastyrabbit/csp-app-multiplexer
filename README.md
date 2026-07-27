@@ -1,6 +1,71 @@
 # CSP App Multiplexer
 
-Status: architecture proposal / planning only.
+Status: working desktop/LAN proof of concept.
+
+## What works now
+
+The repository contains a Windows .NET 8 application that:
+
+1. scans CSP's real Companion Mode QR code from the screen;
+2. establishes and owns the single authenticated CSP connection;
+3. starts a CSP-compatible server on loopback or an explicitly selected private
+   LAN address;
+4. displays a new proxy QR code;
+5. accepts several independent apps using the same proxy invitation;
+6. terminates downstream authentication and password rotation;
+7. remaps each downstream serial space onto the single upstream connection;
+8. forwards arbitrary Companion commands and binary preview tails; and
+9. broadcasts CSP server pushes with independent downstream serials.
+
+Mutating commands such as color, brush, navigator, gesture, and Quick Access
+changes share one ordered queue. Read-only/state requests use bounded
+concurrency so a large preview request does not unnecessarily block every app.
+
+The automated integration fixture connects two clients that both use serial
+`7`, deliberately completes their upstream calls out of order, and verifies
+that each receives only its own response. Separate coverage exercises proxy QR
+round trips, broadcast state pushes, and downstream reconnection.
+
+This is not yet a production release. It still needs live compatibility
+validation against ColorPenguin plus CSP Palette Companion, controlled
+upstream reconnection, rate limits, and a permission model for dangerous
+commands.
+
+## Run the proof of concept
+
+Prerequisites: Windows 10 or newer, .NET 8 SDK, and Clip Studio Paint running in
+Studio Mode.
+
+```powershell
+dotnet run --project src/CspMultiplexer.App/CspMultiplexer.App.csproj -c Release
+```
+
+Then:
+
+1. In CSP, open **File > Connect to smartphone** and keep the real QR visible.
+2. Open **Settings** and choose **This computer only** or a private IPv4
+   network under **Connection scope**.
+3. In the multiplexer, select **Scan CSP QR**.
+4. Wait for the proxy QR to appear.
+5. Let ColorPenguin, CSP Palette Companion, a phone on the same Wi-Fi, or each
+   other Companion app scan the proxy QR instead of CSP's real QR.
+
+The compact **CSP Mux** window is centered on the proxy QR and live connection
+LED. Use **Hide QR** after pairing without disconnecting CSP or any app, then
+use **Show QR** when another app needs to join. Settings can optionally hide the
+QR automatically after the first app connects.
+
+Loopback remains the default. LAN mode binds only the private address selected
+in the UI; it never binds all interfaces or advertises a public address. Windows
+may show a Firewall permission prompt the first time LAN mode is used.
+
+Build and test everything with:
+
+```powershell
+dotnet restore CspAppMultiplexer.sln
+dotnet build CspAppMultiplexer.sln -c Release --no-restore
+dotnet test CspAppMultiplexer.sln -c Release --no-build --no-restore
+```
 
 ## Purpose
 
@@ -103,9 +168,9 @@ Responsibilities:
 - Receive and acknowledge CSP state pushes.
 - Publish normalized state events to the broker.
 
-The existing CSP Palette Companion protocol implementation can inform this
-component, but this project should own a clean reusable library rather than
-depending on the palette UI.
+The existing CSP Palette Companion protocol implementation informed this
+component, but this project owns clean reusable libraries rather than depending
+on the palette UI.
 
 ### 2. Downstream Companion server
 
@@ -241,9 +306,9 @@ Defaults must be conservative:
 - Show every connected client and provide a disconnect/revoke control.
 - Rotate the proxy generation and invitation password when sharing is stopped.
 
-LAN mode may require a Windows Firewall rule. That must be a separate,
-user-initiated action with a clear explanation. The first release should remain
-loopback-only.
+LAN mode may require a Windows Firewall rule. The application relies on the
+normal user-approved Windows Firewall prompt and does not silently create a
+rule.
 
 ## Failure behavior
 
@@ -338,7 +403,7 @@ can be reused. The protocol and broker libraries should remain UI-independent.
 - Quick Access.
 - Canvas preview and caching.
 - Navigator and gesture streams.
-- Optional LAN/mobile support.
+- More complete LAN/mobile compatibility coverage.
 
 ### Stage 5: hardening
 

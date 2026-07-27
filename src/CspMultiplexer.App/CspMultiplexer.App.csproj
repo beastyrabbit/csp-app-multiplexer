@@ -1,0 +1,61 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <!-- KEEP: Screen.AllScreens + Graphics.CopyFromScreen + BarcodeReader.Decode(Bitmap) -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\csp-mux.ico</ApplicationIcon>
+    <AssemblyName>CSP Mux</AssemblyName>
+    <RootNamespace>CspMultiplexer.App</RootNamespace>
+    <Product>CSP Mux</Product>
+    <Version>0.1.0</Version>
+    <SelfContained>false</SelfContained>
+  </PropertyGroup>
+  <!-- Directory.Build.props sets ImplicitUsings=enable, and UseWindowsForms injects
+       implicit System.Drawing + System.Windows.Forms usings. Under UseWPF those collide
+       with WPF types of the same name — Color, Point, Size, Rectangle, Brush, Pen, Image,
+       Cursors, MessageBox, Application, Control, Button, Label, Panel. Removing them turns
+       every collision into a compile error resolved deliberately instead of a silent
+       wrong-type bind. -->
+  <ItemGroup>
+    <Using Remove="System.Drawing" />
+    <Using Remove="System.Windows.Forms" />
+  </ItemGroup>
+  <!-- The WinForms application-bootstrap generator reads app.manifest through this item
+       and reports WFAC010 for §3.1's DPI block. That rule stops a WinForms app declaring
+       DPI in two places; this app has a WPF entry point and no
+       ApplicationConfiguration.Initialize(), so the manifest is the only declaration and
+       ApplicationHighDpiMode would emit nothing. -->
+  <ItemGroup>
+    <AdditionalFiles Remove="$(ApplicationManifest)" />
+  </ItemGroup>
+  <!-- Resource as well as ApplicationIcon: the window reads the same file through a pack
+       URI, which resolves only for an item compiled into the assembly. -->
+  <ItemGroup>
+    <Resource Include="Assets\csp-mux.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\CspMultiplexer.Broker\CspMultiplexer.Broker.csproj" />
+    <ProjectReference Include="..\CspMultiplexer.Protocol\CspMultiplexer.Protocol.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="ZXing.Net.Bindings.Windows.Compatibility" Version="0.16.14" />
+  </ItemGroup>
+  <!-- Debug only, so a Release build of a fresh clone never depends on pwsh existing;
+       WarnAndContinue so drift is an MSBuild warning rather than a CS####; Exists(...) so
+       a source drop without tools/ still builds. -->
+  <Target Name="SuiteSyncCheck" BeforeTargets="BeforeBuild"
+          Condition="'$(Configuration)' == 'Debug' AND
+                     Exists('$(MSBuildProjectDirectory)\..\..\tools\suite-sync.ps1')">
+    <Exec Command="pwsh -NoProfile -File &quot;$(MSBuildProjectDirectory)\..\..\tools\suite-sync.ps1&quot; -Mode Check"
+          ContinueOnError="WarnAndContinue" StandardOutputImportance="high" />
+  </Target>
+  <ItemGroup>
+    <None Include="..\..\THIRD-PARTY-NOTICES.md"
+          Link="THIRD-PARTY-NOTICES.md"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

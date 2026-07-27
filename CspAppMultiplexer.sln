@@ -1,0 +1,42 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CspMultiplexer.Protocol", "src\CspMultiplexer.Protocol\CspMultiplexer.Protocol.csproj", "{0E995A46-9912-4D60-8386-B7F534145756}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CspMultiplexer.Broker", "src\CspMultiplexer.Broker\CspMultiplexer.Broker.csproj", "{28F0040A-C078-419B-BAFE-5A3DC089508C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CspMultiplexer.App", "src\CspMultiplexer.App\CspMultiplexer.App.csproj", "{C0FA4963-FF3C-4202-99F7-1A2BB8D56D70}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CspMultiplexer.Protocol.Tests", "tests\CspMultiplexer.Protocol.Tests\CspMultiplexer.Protocol.Tests.csproj", "{3312B83D-74FE-4493-80EA-A16B6323F0C5}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CspMultiplexer.Broker.Tests", "tests\CspMultiplexer.Broker.Tests\CspMultiplexer.Broker.Tests.csproj", "{E688EC45-DDFB-43EA-B3E0-976BA1E66C36}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{0E995A46-9912-4D60-8386-B7F534145756}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0E995A46-9912-4D60-8386-B7F534145756}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0E995A46-9912-4D60-8386-B7F534145756}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0E995A46-9912-4D60-8386-B7F534145756}.Release|Any CPU.Build.0 = Release|Any CPU
+		{28F0040A-C078-419B-BAFE-5A3DC089508C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{28F0040A-C078-419B-BAFE-5A3DC089508C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{28F0040A-C078-419B-BAFE-5A3DC089508C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{28F0040A-C078-419B-BAFE-5A3DC089508C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C0FA4963-FF3C-4202-99F7-1A2BB8D56D70}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C0FA4963-FF3C-4202-99F7-1A2BB8D56D70}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C0FA4963-FF3C-4202-99F7-1A2BB8D56D70}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C0FA4963-FF3C-4202-99F7-1A2BB8D56D70}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3312B83D-74FE-4493-80EA-A16B6323F0C5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3312B83D-74FE-4493-80EA-A16B6323F0C5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3312B83D-74FE-4493-80EA-A16B6323F0C5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3312B83D-74FE-4493-80EA-A16B6323F0C5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E688EC45-DDFB-43EA-B3E0-976BA1E66C36}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E688EC45-DDFB-43EA-B3E0-976BA1E66C36}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E688EC45-DDFB-43EA-B3E0-976BA1E66C36}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E688EC45-DDFB-43EA-B3E0-976BA1E66C36}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

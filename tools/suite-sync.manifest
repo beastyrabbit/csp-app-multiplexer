@@ -1,0 +1,14 @@
+﻿# suite-sync.manifest — one "<tier>|<relative-path-in-this-repo>|<relative-path-in-the-other>"
+# per synced file (spec §0.1.1).
+#
+# The two repos' manifests are mirror images rather than one byte-identical file:
+# suite-sync.ps1 splits each row positionally into mine|theirs and exits 2 on a path that
+# does not resolve locally, so a single shared ordering cannot be correct on both sides.
+#
+# Tier 2 rows (MuxHandoffContract.cs, CompanionQrScanner.cs, TrayHost.cs) are added by the
+# phases that create those files; a row naming a file that does not exist yet is exit 2.
+1|src/CspMultiplexer.App/Theme/Theme.xaml|src/CspPaletteCompanion.App/Theme/Theme.xaml
+1|tools/suite-sync.ps1|tools/suite-sync.ps1
+2|src/CspMultiplexer.App/CompanionQrScanner.cs|src/CspPaletteCompanion.App/CompanionQrScanner.cs
+2|src/CspMultiplexer.App/TrayHost.cs|src/CspPaletteCompanion.App/TrayHost.cs
+2|src/CspMultiplexer.App/MuxHandoffContract.cs|src/CspPaletteCompanion.App/MuxHandoffContract.cs
