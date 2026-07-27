@@ -39,7 +39,7 @@ jobs:
           ./tools/publish-local.ps1 `
             -Tag "$env:GITHUB_REF_NAME" `
             -OutputDirectory dist/release `
-            -RepoUrl "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY"
+            -RepoUrl "/$env:GITHUB_REPOSITORY"
 
       - name: Create the Forgejo release and attach the files
         env:
