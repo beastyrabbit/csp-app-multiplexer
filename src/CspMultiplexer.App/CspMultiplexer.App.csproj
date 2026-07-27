@@ -10,7 +10,7 @@
     <AssemblyName>CSP Mux</AssemblyName>
     <RootNamespace>CspMultiplexer.App</RootNamespace>
     <Product>CSP Mux</Product>
-    <Version>0.1.0</Version>
+    <!-- Version lives in Directory.Build.props so the release tag can override it. -->
     <SelfContained>false</SelfContained>
   </PropertyGroup>
   <!-- Directory.Build.props sets ImplicitUsings=enable, and UseWindowsForms injects

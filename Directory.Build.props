@@ -5,5 +5,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Deterministic>true</Deterministic>
+    <!-- The release tag drives this. release.yml and tools/publish-local.ps1 pass
+         -p:Version=<tag without the leading v>, which is an MSBuild global property and
+         wins over this default. Do not re-declare <Version> in a .csproj: a project-level
+         assignment would not be overridden and the tag would be ignored. -->
+    <Version Condition="'$(Version)' == ''">0.1.0</Version>
   </PropertyGroup>
 </Project>

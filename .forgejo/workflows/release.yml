@@ -1,0 +1,97 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+
+jobs:
+  publish:
+    # ==========================================================================
+    #  WINDOWS RUNNER REQUIRED — THIS JOB DOES NOT RUN YET.
+    #  WPF cannot be published on Linux, so every release artifact has to come
+    #  from a runner registered with the label `windows`. Until one exists,
+    #  tagging still works and this job sits queued; cut the release by hand
+    #  with tools/publish-local.ps1, which is the same script this job calls.
+    #  That runner needs, on PATH: .NET 8 SDK, git, node (actions/checkout is a
+    #  JavaScript action), PowerShell 7 (pwsh), and curl.
+    # ==========================================================================
+    runs-on: windows
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@v4
+
+      # The tag drives the assembly version: v1.2.3 -> -p:Version=1.2.3.
+      # publish-local.ps1 writes dist/release/ — two .exe files, THIRD-PARTY-NOTICES.md,
+      # SHA256SUMS.txt, and release-body.md.
+      - name: Build the downloads
+        run: |
+          ./tools/publish-local.ps1 `
+            -Tag "$env:GITHUB_REF_NAME" `
+            -OutputDirectory dist/release `
+            -RepoUrl "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY"
+
+      - name: Create the Forgejo release and attach the files
+        env:
+          # Forgejo sets both; secrets.GITHUB_TOKEN is the documented way to ask for it.
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $token = if ($env:TOKEN) { $env:TOKEN } else { $env:FORGEJO_TOKEN }
+          if (-not $token) { throw 'no workflow token in the environment' }
+
+          $api  = $env:GITHUB_API_URL          # e.g. https://git.heerlab.com/api/v1
+          $repo = $env:GITHUB_REPOSITORY       # owner/repo
+          $tag  = $env:GITHUB_REF_NAME
+          $out  = 'dist/release'
+
+          # POST /api/v1/repos/{owner}/{repo}/releases
+          # CreateReleaseOption: tag_name (required), target_commitish, name, body,
+          # draft, prerelease. Auth header is "token <t>", not "Bearer".
+          $payload = [ordered]@{
+            tag_name         = $tag
+            target_commitish = $env:GITHUB_SHA
+            name             = $tag
+            body             = (Get-Content "$out/release-body.md" -Raw)
+            draft            = $false
+            prerelease       = $tag -match '-'
+          } | ConvertTo-Json -Depth 3
+          Set-Content -Path release.json -Value $payload -Encoding utf8NoBOM
+
+          $response = & curl.exe -sS -X POST "$api/repos/$repo/releases" `
+            -H "Authorization: token $token" `
+            -H 'Content-Type: application/json' `
+            --data-binary '@release.json'
+          if ($LASTEXITCODE -ne 0) { throw "curl failed creating the release" }
+
+          $release = $response | ConvertFrom-Json
+          if (-not $release.id) { throw "release not created: $response" }
+          Write-Host "release $($release.id) -> $($release.html_url)"
+
+          # POST /api/v1/repos/{owner}/{repo}/releases/{id}/assets?name=<filename>
+          # multipart/form-data, form field "attachment".
+          # SHA256SUMS.txt names every file that ships, so it is the upload list.
+          $files = @(Get-Content "$out/SHA256SUMS.txt" |
+                     ForEach-Object { ($_ -split '\s+', 2)[1] })
+          $files += 'SHA256SUMS.txt'
+
+          Push-Location $out
+          try {
+            foreach ($name in $files) {
+              $encoded = [uri]::EscapeDataString($name)
+              $asset = & curl.exe -sS -X POST "$api/repos/$repo/releases/$($release.id)/assets?name=$encoded" `
+                -H "Authorization: token $token" `
+                -F "attachment=@$name"
+              if ($LASTEXITCODE -ne 0) { throw "curl failed uploading $name" }
+              if (-not ($asset | ConvertFrom-Json).id) { throw "upload rejected for ${name}: $asset" }
+              Write-Host "attached $name"
+            }
+          }
+          finally { Pop-Location }

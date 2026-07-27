@@ -1,0 +1,79 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+
+jobs:
+  # Linux. WPF cannot be built on Linux, so this job never touches the .sln — building the
+  # solution would pull in CspMultiplexer.App (net8.0-windows, UseWPF) and fail.
+  # Every project below was checked to be plain net8.0 with no Windows-only reference.
+  # Covered here:      Protocol, Broker, their test projects
+  # Left to `windows`: CspMultiplexer.App
+  libraries:
+    runs-on: ubuntu-latest
+    # The .NET 8 SDK comes from the container, so no setup-dotnet action is needed.
+    # If this instance's Linux runner registers a different label, change `runs-on` only.
+    container:
+      image: mcr.microsoft.com/dotnet/sdk:8.0
+    steps:
+      # Checked out with git rather than an action on purpose. Every Forgejo/GitHub
+      # checkout action is a node20 JavaScript action, and this image ships no Node.js,
+      # so `uses:` cannot execute here at all. The image does ship git. This also leaves
+      # the workflow with zero external action dependencies, which is the safer default
+      # against a self-hosted instance whose action registry we do not control.
+      - name: Checkout
+        run: |
+          git init -q .
+          git config --global --add safe.directory "$PWD"
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git -c http.extraheader="Authorization: token ${GITHUB_TOKEN}" \
+              fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout -q FETCH_HEAD
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Restore
+        run: |
+          dotnet restore src/CspMultiplexer.Protocol/CspMultiplexer.Protocol.csproj
+          dotnet restore src/CspMultiplexer.Broker/CspMultiplexer.Broker.csproj
+          dotnet restore tests/CspMultiplexer.Protocol.Tests/CspMultiplexer.Protocol.Tests.csproj
+          dotnet restore tests/CspMultiplexer.Broker.Tests/CspMultiplexer.Broker.Tests.csproj
+
+      - name: Build
+        run: |
+          dotnet build src/CspMultiplexer.Protocol/CspMultiplexer.Protocol.csproj -c Release --no-restore
+          dotnet build src/CspMultiplexer.Broker/CspMultiplexer.Broker.csproj -c Release --no-restore
+          dotnet build tests/CspMultiplexer.Protocol.Tests/CspMultiplexer.Protocol.Tests.csproj -c Release --no-restore
+          dotnet build tests/CspMultiplexer.Broker.Tests/CspMultiplexer.Broker.Tests.csproj -c Release --no-restore
+
+      - name: Test
+        run: |
+          dotnet test tests/CspMultiplexer.Protocol.Tests/CspMultiplexer.Protocol.Tests.csproj -c Release --no-build
+          dotnet test tests/CspMultiplexer.Broker.Tests/CspMultiplexer.Broker.Tests.csproj -c Release --no-build
+
+  windows:
+    # ==========================================================================
+    #  THIS JOB DOES NOT RUN YET.
+    #  It waits for a runner registered with the label `windows`. Until one
+    #  exists the job sits queued; the `libraries` job above is unaffected.
+    #  That runner needs, on PATH: .NET 8 SDK, git, node (actions/checkout is a
+    #  JavaScript action), and PowerShell 7 (pwsh).
+    # ==========================================================================
+    runs-on: windows
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@v4
+
+      - name: Restore
+        run: dotnet restore CspAppMultiplexer.sln
+
+      - name: Build the whole solution
+        run: dotnet build CspAppMultiplexer.sln -c Release --no-restore
+
+      - name: Test
+        run: dotnet test CspAppMultiplexer.sln -c Release --no-build
