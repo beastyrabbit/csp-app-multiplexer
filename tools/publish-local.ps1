@@ -145,7 +145,8 @@ Write-Text (Join-Path $out 'SHA256SUMS.txt') (($lines -join "`n") + "`n")
 # ---- release body ----------------------------------------------------------------------
 $small = $assets[0]
 $big   = $assets[1]
-$avUrl = "$RepoUrl/wiki/Installation#verify-the-download-and-antivirus"
+$wikiUrl = "$RepoUrl/wiki"
+$installationUrl = "$RepoUrl/wiki/Installation"
 $releaseNotes = if (Test-Path $ReleaseNotesPath) {
     (Get-Content $ReleaseNotesPath -Raw).Trim()
 }
@@ -156,26 +157,17 @@ else {
 $body = @"
 $releaseNotes
 
-## Downloads
+[Usage, features, and limitations]($wikiUrl) ·
+[Installation, requirements, and verification]($installationUrl)
 
-Windows 10 or 11, 64-bit.
+## Downloads
 
 | Download | Size | You need |
 | --- | --- | --- |
 | ``$small`` | $(Format-Size $small) | the latest [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) |
 | ``$big`` | $(Format-Size $big) | nothing |
 
-Take the small one unless you would rather not install the runtime. Both are the same app.
-
-``SHA256SUMS.txt`` holds the SHA-256 of each file. To check one:
-
-``````
-Get-FileHash "$big" -Algorithm SHA256
-``````
-
-Antivirus may flag either download. Both are unsigned single-file bundles that unpack
-themselves at launch, and heuristic scanners score that as suspicious. The small build
-trips it less often. [What to do about it]($avUrl)
+Both downloads contain the same app. Checksums are in ``SHA256SUMS.txt``.
 "@
 
 Write-Text (Join-Path $out 'release-body.md') ($body -replace "`r`n", "`n")
