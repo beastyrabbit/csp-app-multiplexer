@@ -57,16 +57,8 @@ has the `SHA256SUMS.txt` check and the exclusion steps.
 
 ## Build
 
-Needs the .NET 8 SDK. WPF: Windows only.
-
-```powershell
-dotnet build CspAppMultiplexer.sln -c Release
-dotnet test CspAppMultiplexer.sln -c Release --no-build
-./tools/publish-local.ps1 -Version 1.0.0
-```
-
-Trimming and NativeAOT are impossible: Windows Forms is referenced for the tray
-icon, and `-p:PublishTrimmed=true` fails with `NETSDK1175`.
+.NET 8 SDK, Windows only —
+[Build from source](https://git.heerlab.com/beasty/csp-app-multiplexer/wiki/Build-from-Source).
 
 ## Status
 

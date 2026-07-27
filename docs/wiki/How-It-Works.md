@@ -27,8 +27,8 @@ disconnects nobody. Defaults: 8 clients, 4 reads, 32 MB frames.
 
 ## Serial remapping
 
-The protocol tags each request with a serial so a reply can be matched to it,
-and two apps both start counting at the same place. The Mux remaps every
+The protocol tags each request with a serial, and two apps both start counting
+at the same place. The Mux remaps every
 downstream serial onto its own upstream space and maps the reply back, so each
 app sees only its own response. Broadcasts are fanned out the other way.
 

@@ -27,6 +27,7 @@ dropping CSP or any connected app.
 - [How It Works](How-It-Works) — one upstream, many downstream sessions
 - [Connection Scope](Connection-Scope) — loopback vs LAN, security posture
 - [Palette Companion Integration](Palette-Companion-Integration) — auto-connect handoff
+- [Build from source](Build-from-Source) — SDK, publish flags, CI
 
 Window 460 x 620. Lives in the tray; the close button hides it, **Exit** is in
 the tray menu. Settings live in
