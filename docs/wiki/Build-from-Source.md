@@ -56,8 +56,8 @@ Companion repository. A `SuiteSyncCheck` build target fails on drift; `tools\sui
 `.forgejo/workflows/ci.yml` splits on the only line that matters:
 
 The `windows` CI job verifies suite synchronization and formatting, then builds the full
-WPF solution and runs all tests. It installs the current .NET 8 SDK with `setup-dotnet`;
-the runner itself provides Git, Node.js and PowerShell 7.
+WPF solution and runs all tests. The runner provides the .NET 8 SDK, Git, Node.js and
+PowerShell 7; the workflow checks the SDK major version before restoring.
 
 `release.yml` runs on a `v*` tag, verifies the tagged source, calls `publish-local.ps1`,
 then creates the release through the Forgejo API with `curl`. Auth header is `token`, not
