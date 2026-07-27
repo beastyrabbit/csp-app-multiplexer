@@ -6,15 +6,15 @@ Windows 10 or newer, x64. No installer: one `.exe`, put it anywhere.
 
 | Build | Size | Needs |
 | --- | --- | --- |
-| `CSP-Mux-<version>-win-x64-needs-dotnet11.exe` | 0.9 MiB | latest .NET 11 Desktop Runtime preview |
+| `CSP-Mux-<version>-win-x64-needs-dotnet10.exe` | 0.9 MiB | latest .NET 10 Desktop Runtime |
 | `CSP-Mux-<version>-win-x64-standalone.exe` | 73.8 MiB | nothing |
 
 Take the small one unless you refuse to install a runtime; it trips antivirus
 less often. Neither is trimmed or AOT-compiled — Windows Forms (tray icon, QR
 rendering) cannot be trimmed (`NETSDK1175`).
 
-Get the latest **.NET Desktop Runtime 11 preview, x64** from
-<https://dotnet.microsoft.com/download/dotnet/11.0>. Neither the plain .NET nor
+Get the latest **.NET Desktop Runtime 10, x64** from
+<https://dotnet.microsoft.com/download/dotnet/10.0>. Neither the plain .NET nor
 the ASP.NET Core runtime works.
 
 ## Verify the download, and antivirus
@@ -50,7 +50,7 @@ Uninstall: **Exit** from the tray icon, delete the `.exe` and
 
 ## Build from source
 
-.NET 11 preview SDK on Windows; WPF does not build on Linux or macOS.
+.NET 10 SDK on Windows; WPF does not build on Linux or macOS.
 
 ```powershell
 dotnet publish src/CspMultiplexer.App -c Release -r win-x64 -p:PublishSingleFile=true

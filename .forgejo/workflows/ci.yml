@@ -25,7 +25,7 @@ jobs:
     steps:
       - uses: https://data.forgejo.org/actions/checkout@v4
 
-      - name: Install the latest .NET 11 preview
+      - name: Install the latest .NET 10 SDK
         run: ./tools/setup-dotnet-latest.ps1
 
       - name: Restore

@@ -1,7 +1,7 @@
 #requires -Version 7
 [CmdletBinding()]
 param(
-    [string] $Channel = '11.0',
+    [string] $Channel = '10.0',
     [string] $InstallDirectory
 )
 
@@ -15,7 +15,7 @@ if (-not $InstallDirectory) {
         [IO.Path]::GetTempPath()
     }
 
-    $InstallDirectory = Join-Path $baseDirectory "CSP Mux CI\dotnet-$Channel-preview"
+    $InstallDirectory = Join-Path $baseDirectory "CSP Mux CI\dotnet-$Channel"
 }
 
 $InstallDirectory = [IO.Path]::GetFullPath($InstallDirectory)
@@ -26,11 +26,11 @@ try {
     Invoke-WebRequest https://dot.net/v1/dotnet-install.ps1 -OutFile $installer
     & $installer `
         -Channel $Channel `
-        -Quality preview `
+        -Quality GA `
         -InstallDir $InstallDirectory `
         -NoPath
-    if ($LASTEXITCODE -ne 0) {
-        throw "dotnet-install failed with exit code $LASTEXITCODE."
+    if (-not $?) {
+        throw 'dotnet-install failed.'
     }
 }
 finally {

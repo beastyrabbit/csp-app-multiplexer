@@ -7,8 +7,8 @@
     Produces exactly what .forgejo/workflows/release.yml produces — the workflow calls this
     same script — so a release can be cut by hand without a runner.
 
-        CSP-Mux-<version>-win-x64-needs-dotnet11.exe
-            Framework-dependent, single file. Requires the latest .NET 11 Desktop Runtime.
+        CSP-Mux-<version>-win-x64-needs-dotnet10.exe
+            Framework-dependent, single file. Requires the latest .NET 10 Desktop Runtime.
         CSP-Mux-<version>-win-x64-standalone.exe
             Self-contained, single file, compressed. No prerequisites.
         THIRD-PARTY-NOTICES.md
@@ -95,7 +95,7 @@ $common = @(
 
 $builds = @(
     @{
-        Name  = "$stem-$Version-win-x64-needs-dotnet11.exe"
+        Name  = "$stem-$Version-win-x64-needs-dotnet10.exe"
         Dir   = Join-Path $staging 'framework-dependent'
         Extra = @('--self-contained', 'false')
     }
@@ -162,7 +162,7 @@ Windows 10 or 11, 64-bit.
 
 | Download | Size | You need |
 | --- | --- | --- |
-| ``$small`` | $(Format-Size $small) | the latest [.NET 11 Desktop Runtime preview](https://dotnet.microsoft.com/download/dotnet/11.0) |
+| ``$small`` | $(Format-Size $small) | the latest [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) |
 | ``$big`` | $(Format-Size $big) | nothing |
 
 Take the small one unless you would rather not install the runtime. Both are the same app.

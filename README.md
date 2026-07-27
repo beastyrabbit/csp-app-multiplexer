@@ -47,7 +47,7 @@ Windows 10/11, 64-bit. Both files are the same app.
 
 | Download | Size | You need |
 |---|---|---|
-| `CSP-Mux-<version>-win-x64-needs-dotnet11.exe` | 0.9 MB | the latest [.NET 11 Desktop Runtime preview](https://dotnet.microsoft.com/download/dotnet/11.0) |
+| `CSP-Mux-<version>-win-x64-needs-dotnet10.exe` | 0.9 MB | the latest [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) |
 | `CSP-Mux-<version>-win-x64-standalone.exe` | 73.8 MB | nothing |
 
 Take the small one unless you would rather not install the runtime. Both are
@@ -57,7 +57,7 @@ has the `SHA256SUMS.txt` check and the exclusion steps.
 
 ## Build
 
-.NET 11 preview SDK, Windows only —
+.NET 10 SDK, Windows only —
 [Build from source](https://git.heerlab.com/beasty/csp-app-multiplexer/wiki/Build-from-Source).
 
 ## Status
