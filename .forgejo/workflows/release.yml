@@ -8,8 +8,6 @@ on:
 env:
   DOTNET_NOLOGO: "true"
   DOTNET_CLI_TELEMETRY_OPTOUT: "true"
-  # The host currently provides a newer runtime; allow net8.0 test hosts to use it.
-  DOTNET_ROLL_FORWARD: "Major"
 
 jobs:
   publish:
@@ -22,6 +20,9 @@ jobs:
 
     steps:
       - uses: https://data.forgejo.org/actions/checkout@v4
+
+      - name: Install the latest .NET 11 preview
+        run: ./tools/setup-dotnet-latest.ps1
 
       - name: Verify the tagged source
         run: |

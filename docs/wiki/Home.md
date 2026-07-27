@@ -23,7 +23,7 @@ dropping CSP or any connected app.
 
 ## Pages
 
-- [Installation](Installation) — downloads, .NET 8 runtime, antivirus
+- [Installation](Installation) — downloads, latest .NET 11 preview runtime, antivirus
 - [How It Works](How-It-Works) — one upstream, many downstream sessions
 - [Connection Scope](Connection-Scope) — loopback vs LAN, security posture
 - [Palette Companion Integration](Palette-Companion-Integration) — auto-connect handoff

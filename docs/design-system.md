@@ -7,7 +7,7 @@ Two Windows desktop applications, one visual identity, one literal `Theme.xaml`:
 | App | Repo | Framework | Fate |
 |---|---|---|---|
 | **CSP Palette Companion** | `C:/projects/csp_color_palette_gen` | WPF, `net8.0-windows` | Refined in place |
-| **CSP Mux** | `C:/projects/csp-app-multiplexer` | WinForms → **WPF**, `net8.0-windows` | Rewritten |
+| **CSP Mux** | `C:/projects/csp-app-multiplexer` | WinForms → **WPF**, `net11.0-windows` | Rewritten |
 
 Every number in this document has been derived and summed. Where a number is load-bearing, the derivation is printed next to it. **The implementer must never have to invent a value.** If a value appears to be missing, it is a defect in this document — do not guess; the intended value is recorded in the section that owns the component.
 
@@ -1160,7 +1160,7 @@ Five call sites (124, 139, 159, 169, and the QR-wait path) drop their third argu
 | `ProxyQrRenderer.cs` | Rewritten (§5.5) |
 | `CompanionQrScanner.cs` | **Deleted.** Replaced by the Companion's implementation, moved into `CspSuite.Theme`'s sibling — see below |
 | `AppPreferences.cs` | Kept; gains `WindowLeft`/`WindowTop` and a guarded `Save` |
-| `CspMultiplexer.Broker`, `CspMultiplexer.Protocol` | **Untouched.** `net8.0`, UI-agnostic. |
+| `CspMultiplexer.Broker`, `CspMultiplexer.Protocol` | **Untouched.** `net11.0`, UI-agnostic. |
 
 > **Scanner unification.** The Mux's `CompanionQrScanner` silently swallows every per-display capture failure, so if all monitors fail to capture it scans forever showing "Scanning" and reports nothing. The Companion's aggregates capture errors into an `AggregateException` with device names and bounds and throws when every display fails. Requirement 5 says one suite: **the Mux's copy is deleted and the Companion's file is copied into the Mux project verbatim** (namespace adjusted). It is not put in `CspSuite.Theme` — that project is `UseWPF` with no code and no WinForms reference; a shared *scanner* would need a fourth project and is not worth it for one file. Copy it, and note in both files that they must be kept in sync.
 
@@ -1451,7 +1451,7 @@ protected override async void OnClosing(CancelEventArgs e)
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net11.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <!-- KEEP: Screen.AllScreens + Graphics.CopyFromScreen + BarcodeReader.Decode(Bitmap) -->
     <UseWindowsForms>true</UseWindowsForms>
@@ -1531,7 +1531,7 @@ src/CspSuite.Theme/Theme.xaml          (Build Action: Page)
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net11.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <EnableDefaultPageItems>false</EnableDefaultPageItems>
   </PropertyGroup>
